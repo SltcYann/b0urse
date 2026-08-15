@@ -12,7 +12,7 @@ import SwiftUI
 struct b0urseApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
-    va body: some Scene {
+    var body: some Scene {
         WindowGroup {
             ContentView()
                 .frame(minWidth: 520, minHeight: 640)
