@@ -6,5 +6,6 @@ struct b0urseApp: App {
         WindowGroup {
             ContentView()
         }
+        .windowStyle(.hiddenTitleBar)
     }
 }
