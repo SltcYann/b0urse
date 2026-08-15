@@ -1,86 +1,97 @@
 import AppKit
 import SwiftUI
 
-struct Subscription: Codable, Equatable, Identifiable {
+struct Abonnement: Codable, Equatable, Identifiable {
     let id: UUID
-    var name: String
-    var price: String
+    var nom: String
+    var prix: String
     var emoji: String
 
-    init(id: UUID = UUID(), name: String = "", price: String = "", emoji: String = "📦") {
+    init(id: UUID = UUID(), nom: String = "", prix: String = "", emoji: String = "📦") {
         self.id = id
-        self.name = name
-        self.price = price
+        self.nom = nom
+        self.prix = prix
         self.emoji = emoji
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case nom = "name"
+        case prix = "price"
+        case emoji
     }
 }
 
-struct OneTimeExpense: Codable, Equatable, Identifiable {
+struct DepensePonctuelle: Codable, Equatable, Identifiable {
     let id: UUID
-    var name: String
-    var amount: String
+    var nom: String
+    var montant: String
     var emoji: String
 
-    init(id: UUID = UUID(), name: String = "", amount: String = "", emoji: String = "🧾") {
+    init(id: UUID = UUID(), nom: String = "", montant: String = "", emoji: String = "🧾") {
         self.id = id
-        self.name = name
-        self.amount = amount
+        self.nom = nom
+        self.montant = montant
         self.emoji = emoji
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case nom = "name"
+        case montant = "amount"
+        case emoji
     }
 }
 
 struct ContentView: View {
-    @State private var subscriptions = LocalStorage.load(
-        [Subscription].self,
-        forKey: LocalStorage.subscriptionsKey
+    @State private var abonnements = LocalStorage.load(
+        [Abonnement].self,
+        forKey: LocalStorage.cleAbonnements
     ) ?? []
-    @State private var editedSubscription: Subscription?
-    @State private var oneTimeExpenses = LocalStorage.load(
-        [OneTimeExpense].self,
-        forKey: LocalStorage.oneTimeExpensesKey
+    @State private var abonnementModifie: Abonnement?
+    @State private var depensesPonctuelles = LocalStorage.load(
+        [DepensePonctuelle].self,
+        forKey: LocalStorage.cleDepensesPonctuelles
     ) ?? []
-    @State private var editedExpense: OneTimeExpense?
-    @AppStorage("scholarshipTier") private var scholarshipTier: ScholarshipTier = .level7
+    @State private var depenseModifiee: DepensePonctuelle?
+    @AppStorage("scholarshipTier") private var echelonBourse: EchelonBourse = .echelon7
 
-    private var monthlyScholarship: Double {
-        scholarshipTier.monthlyAmount
+    private var bourseMensuelle: Double {
+        echelonBourse.montantMensuel
     }
 
-    private var subscriptionTotal: Double {
-        subscriptions.reduce(0) { total, subscription in
-            total + amount(from: subscription.price)
-        }
+    private var totalAbonnements: Double {
+        abonnements.reduce(0) { $0 + montant(depuis: $1.prix) }
     }
 
-    private var oneTimeExpenseTotal: Double {
-        oneTimeExpenses.reduce(0) { total, expense in
-            total + amount(from: expense.amount)
-        }
+    private var totalDepensesPonctuelles: Double {
+        depensesPonctuelles.reduce(0) { $0 + montant(depuis: $1.montant) }
     }
 
-    private var remainingAmount: Double {
-        max(monthlyScholarship - subscriptionTotal - oneTimeExpenseTotal, 0)
+    private var montantRestant: Double {
+        max(bourseMensuelle - totalAbonnements - totalDepensesPonctuelles, 0)
     }
 
-    private var remainingPercentage: Double {
-        guard monthlyScholarship > 0 else { return 0 }
-        return min(remainingAmount / monthlyScholarship, 1)
+    private var pourcentageRestant: Double {
+        guard bourseMensuelle > 0 else { return 0 }
+        return min(montantRestant / bourseMensuelle, 1)
     }
 
-    private var balanceLevel: BalanceLevel {
-        BalanceLevel(percentage: remainingPercentage)
+    private var niveauSolde: NiveauSolde {
+        NiveauSolde(pourcentage: pourcentageRestant)
     }
 
     var body: some View {
         NavigationStack {
             ZStack {
-                AppBackground(balanceLevel: balanceLevel)
+                AppBackground(niveauSolde: niveauSolde)
 
                 VStack(spacing: 20) {
-                    ScholarshipTracker(
-                        scholarshipTier: $scholarshipTier,
-                        remainingAmount: remainingAmount,
-                        remainingPercentage: remainingPercentage
+                    SuiviBourse(
+                        echelonBourse: $echelonBourse,
+                        montantRestant: montantRestant,
+                        pourcentageRestant: pourcentageRestant,
+                        niveauSolde: niveauSolde
                     )
                     .padding(.horizontal, 24)
                     .padding(.top, 24)
@@ -92,14 +103,14 @@ struct ContentView: View {
                                     .font(.title2.weight(.semibold))
 
                                 AddEntryButton(accessibilityLabel: "Ajouter un abonnement") {
-                                    editedSubscription = Subscription()
+                                    abonnementModifie = Abonnement()
                                 }
 
-                                ForEach(subscriptions) { subscription in
+                                ForEach(abonnements) { abonnement in
                                     Button {
-                                        editedSubscription = subscription
+                                        abonnementModifie = abonnement
                                     } label: {
-                                        SubscriptionRow(subscription: subscription)
+                                        LigneAbonnement(abonnement: abonnement)
                                     }
                                     .buttonStyle(.plain)
                                     .glassEffect(
@@ -110,19 +121,24 @@ struct ContentView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
 
+                            Capsule()
+                                .frame(width: 6)
+                                .frame(maxHeight: .infinity)
+                                .glassEffect(.regular, in: Capsule())
+
                             VStack(alignment: .leading, spacing: 14) {
                                 Text("Dépenses ponctuelles")
                                     .font(.title2.weight(.semibold))
 
                                 AddEntryButton(accessibilityLabel: "Ajouter une dépense ponctuelle") {
-                                    editedExpense = OneTimeExpense()
+                                    depenseModifiee = DepensePonctuelle()
                                 }
 
-                                ForEach(oneTimeExpenses) { expense in
+                                ForEach(depensesPonctuelles) { depense in
                                     Button {
-                                        editedExpense = expense
+                                        depenseModifiee = depense
                                     } label: {
-                                        OneTimeExpenseRow(expense: expense)
+                                        LigneDepensePonctuelle(depense: depense)
                                     }
                                     .buttonStyle(.plain)
                                     .glassEffect(
@@ -134,25 +150,9 @@ struct ContentView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .frame(minHeight: 240, alignment: .top)
-                        .overlay {
-                            GeometryReader { geometry in
-                                Color.clear
-                                    .frame(width: 6, height: geometry.size.height)
-                                    .glassEffect(.regular, in: Capsule())
-                                    .position(
-                                        x: geometry.size.width / 2,
-                                        y: geometry.size.height / 2
-                                    )
-                                    .animation(
-                                        .smooth(duration: 0.5),
-                                        value: geometry.size.height
-                                    )
-                            }
-                            .allowsHitTesting(false)
-                        }
                         .animation(
                             .smooth(duration: 0.5),
-                            value: subscriptions.count + oneTimeExpenses.count
+                            value: abonnements.count + depensesPonctuelles.count
                         )
                         .padding(.horizontal, 24)
                         .padding(.top, 24)
@@ -174,76 +174,85 @@ struct ContentView: View {
                     }
                 }
             }
-            .sheet(item: $editedSubscription) { subscription in
-                SubscriptionEditor(
-                    subscription: subscription,
-                    isNew: !subscriptions.contains { $0.id == subscription.id }
-                ) { updatedSubscription in
-                    save(updatedSubscription)
+            .sheet(item: $abonnementModifie) { abonnement in
+                EditeurAbonnement(
+                    abonnement: abonnement,
+                    estNouveau: !abonnements.contains { $0.id == abonnement.id },
+                    niveauSolde: niveauSolde
+                ) { abonnementMisAJour in
+                    enregistrer(abonnementMisAJour)
+                } lorsSuppression: {
+                    abonnements.removeAll { $0.id == abonnement.id }
                 }
             }
-            .sheet(item: $editedExpense) { expense in
-                OneTimeExpenseEditor(
-                    expense: expense,
-                    isNew: !oneTimeExpenses.contains { $0.id == expense.id }
-                ) { updatedExpense in
-                    save(updatedExpense)
+            .sheet(item: $depenseModifiee) { depense in
+                EditeurDepensePonctuelle(
+                    depense: depense,
+                    estNouveau: !depensesPonctuelles.contains { $0.id == depense.id },
+                    niveauSolde: niveauSolde
+                ) { depenseMiseAJour in
+                    enregistrer(depenseMiseAJour)
+                } lorsSuppression: {
+                    depensesPonctuelles.removeAll { $0.id == depense.id }
                 }
             }
-            .onChange(of: subscriptions) { _, newSubscriptions in
-                LocalStorage.save(newSubscriptions, forKey: LocalStorage.subscriptionsKey)
+            .onChange(of: abonnements) { _, nouveauxAbonnements in
+                LocalStorage.save(nouveauxAbonnements, forKey: LocalStorage.cleAbonnements)
             }
-            .onChange(of: oneTimeExpenses) { _, newExpenses in
-                LocalStorage.save(newExpenses, forKey: LocalStorage.oneTimeExpensesKey)
+            .onChange(of: depensesPonctuelles) { _, nouvellesDepenses in
+                LocalStorage.save(nouvellesDepenses, forKey: LocalStorage.cleDepensesPonctuelles)
             }
         }
     }
 
-    private func save(_ subscription: Subscription) {
-        if let index = subscriptions.firstIndex(where: { $0.id == subscription.id }) {
-            subscriptions[index] = subscription
+    private func enregistrer(_ abonnement: Abonnement) {
+        if let indice = abonnements.firstIndex(where: { $0.id == abonnement.id }) {
+            abonnements[indice] = abonnement
         } else {
-            subscriptions.append(subscription)
+            abonnements.append(abonnement)
         }
     }
 
-    private func save(_ expense: OneTimeExpense) {
-        if let index = oneTimeExpenses.firstIndex(where: { $0.id == expense.id }) {
-            oneTimeExpenses[index] = expense
+    private func enregistrer(_ depense: DepensePonctuelle) {
+        if let indice = depensesPonctuelles.firstIndex(where: { $0.id == depense.id }) {
+            depensesPonctuelles[indice] = depense
         } else {
-            oneTimeExpenses.append(expense)
+            depensesPonctuelles.append(depense)
         }
     }
 
-    private func amount(from text: String) -> Double {
-        Double(text.replacingOccurrences(of: ",", with: ".")) ?? 0
+    private func montant(depuis texte: String) -> Double {
+        Double(texte.replacingOccurrences(of: ",", with: ".")) ?? 0
     }
 }
 
 private enum LocalStorage {
-    static let subscriptionsKey = "subscriptions"
-    static let oneTimeExpensesKey = "oneTimeExpenses"
+    static let cleAbonnements = "subscriptions"
+    static let cleDepensesPonctuelles = "oneTimeExpenses"
+    private static let decoder = JSONDecoder()
+    private static let encoder = JSONEncoder()
 
     static func load<Value: Decodable>(_ type: Value.Type, forKey key: String) -> Value? {
         guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
-        return try? JSONDecoder().decode(type, from: data)
+        return try? decoder.decode(type, from: data)
     }
 
     static func save<Value: Encodable>(_ value: Value, forKey key: String) {
-        guard let data = try? JSONEncoder().encode(value) else { return }
+        guard let data = try? encoder.encode(value) else { return }
         UserDefaults.standard.set(data, forKey: key)
     }
 }
 
-private struct ScholarshipTracker: View {
-    @Binding var scholarshipTier: ScholarshipTier
-    @State private var isSelectingScholarship = false
+private struct SuiviBourse: View {
+    @Binding var echelonBourse: EchelonBourse
+    @State private var selectionEchelonAffichee = false
 
-    let remainingAmount: Double
-    let remainingPercentage: Double
+    let montantRestant: Double
+    let pourcentageRestant: Double
+    let niveauSolde: NiveauSolde
 
-    private var statusColor: Color {
-        BalanceLevel(percentage: remainingPercentage).color
+    private var couleurEtat: Color {
+        niveauSolde.couleur
     }
 
     var body: some View {
@@ -252,10 +261,10 @@ private struct ScholarshipTracker: View {
                 Spacer()
 
                 Button {
-                    isSelectingScholarship.toggle()
+                    selectionEchelonAffichee.toggle()
                 } label: {
                     HStack(spacing: 10) {
-                        Text(scholarshipTier.selectionTitle)
+                        Text(echelonBourse.titreSelection)
                             .lineLimit(1)
 
                         Image(systemName: "chevron.down")
@@ -266,19 +275,19 @@ private struct ScholarshipTracker: View {
                 .buttonStyle(.glass)
                 .fixedSize()
                 .accessibilityLabel("Échelon de bourse")
-                .popover(isPresented: $isSelectingScholarship, arrowEdge: .bottom) {
+                .popover(isPresented: $selectionEchelonAffichee, arrowEdge: .bottom) {
                     VStack(alignment: .leading, spacing: 4) {
-                        ForEach(ScholarshipTier.allCases) { tier in
+                        ForEach(EchelonBourse.allCases) { echelon in
                             Button {
-                                scholarshipTier = tier
-                                isSelectingScholarship = false
+                                echelonBourse = echelon
+                                selectionEchelonAffichee = false
                             } label: {
                                 HStack {
-                                    Text(tier.selectionTitle)
+                                    Text(echelon.titreSelection)
 
                                     Spacer()
 
-                                    if scholarshipTier == tier {
+                                    if echelonBourse == echelon {
                                         Image(systemName: "checkmark")
                                     }
                                 }
@@ -299,16 +308,17 @@ private struct ScholarshipTracker: View {
                     .stroke(.white.opacity(0.2), style: StrokeStyle(lineWidth: 18, lineCap: .round))
 
                 HalfCircle()
-                    .trim(from: 0, to: remainingPercentage)
-                    .stroke(statusColor, style: StrokeStyle(lineWidth: 18, lineCap: .round))
-                    .animation(.smooth(duration: 0.7), value: remainingPercentage)
+                    .trim(from: 0, to: max(pourcentageRestant, 0.001))
+                    .stroke(couleurEtat, style: StrokeStyle(lineWidth: 18, lineCap: .round))
+                    .opacity(pourcentageRestant == 0 ? 0 : 1)
+                    .animation(.smooth(duration: 0.7), value: pourcentageRestant)
 
                 VStack(spacing: 2) {
-                    Text(remainingPercentage, format: .percent.precision(.fractionLength(0)))
+                    Text(pourcentageRestant, format: .percent.precision(.fractionLength(0)))
                         .font(.system(size: 38, weight: .bold, design: .rounded))
-                        .foregroundStyle(statusColor)
-                        .contentTransition(.numericText(value: remainingPercentage))
-                    Text("\(remainingAmount, format: .number.precision(.fractionLength(2))) € restants")
+                        .foregroundStyle(couleurEtat)
+                        .contentTransition(.numericText(value: pourcentageRestant))
+                    Text("\(montantRestant, format: .number.precision(.fractionLength(2))) € restants")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -316,104 +326,104 @@ private struct ScholarshipTracker: View {
             }
             .frame(maxWidth: 320)
             .frame(height: 180)
-            .animation(.easeInOut(duration: 0.45), value: statusColor)
+            .animation(.easeInOut(duration: 0.45), value: couleurEtat)
         }
         .padding(22)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28))
     }
 }
 
-private enum ScholarshipTier: String, CaseIterable, Codable, Identifiable {
-    case none
-    case level0Bis
-    case level1
-    case level2
-    case level3
-    case level4
-    case level5
-    case level6
-    case level7
+private enum EchelonBourse: String, CaseIterable, Codable, Identifiable {
+    case aucun = "none"
+    case echelon0Bis = "level0Bis"
+    case echelon1 = "level1"
+    case echelon2 = "level2"
+    case echelon3 = "level3"
+    case echelon4 = "level4"
+    case echelon5 = "level5"
+    case echelon6 = "level6"
+    case echelon7 = "level7"
 
     var id: Self { self }
 
-    var annualAmount: Double {
+    var montantAnnuel: Double {
         switch self {
-        case .none:
+        case .aucun:
             0
-        case .level0Bis:
+        case .echelon0Bis:
             1_454
-        case .level1:
+        case .echelon1:
             2_163
-        case .level2:
+        case .echelon2:
             3_071
-        case .level3:
+        case .echelon3:
             3_828
-        case .level4:
+        case .echelon4:
             4_587
-        case .level5:
+        case .echelon5:
             5_212
-        case .level6:
+        case .echelon6:
             5_506
-        case .level7:
+        case .echelon7:
             6_335
         }
     }
 
-    var monthlyAmount: Double {
-        annualAmount / 10
+    var montantMensuel: Double {
+        montantAnnuel / 10
     }
 
-    var name: String {
+    var nom: String {
         switch self {
-        case .none:
+        case .aucun:
             "Pas de bourse"
-        case .level0Bis:
+        case .echelon0Bis:
             "Échelon 0 bis"
-        case .level1:
+        case .echelon1:
             "Échelon 1"
-        case .level2:
+        case .echelon2:
             "Échelon 2"
-        case .level3:
+        case .echelon3:
             "Échelon 3"
-        case .level4:
+        case .echelon4:
             "Échelon 4"
-        case .level5:
+        case .echelon5:
             "Échelon 5"
-        case .level6:
+        case .echelon6:
             "Échelon 6"
-        case .level7:
+        case .echelon7:
             "Échelon 7"
         }
     }
 
-    var selectionTitle: String {
-        guard self != .none else { return name }
-        return "\(name) · \(monthlyAmount.formatted(.currency(code: "EUR"))) / mois"
+    var titreSelection: String {
+        guard self != .aucun else { return nom }
+        return "\(nom) · \(montantMensuel.formatted(.currency(code: "EUR"))) / mois"
     }
 }
 
-private enum BalanceLevel: Equatable {
-    case comfortable
-    case warning
-    case critical
+private enum NiveauSolde: Equatable {
+    case confortable
+    case alerte
+    case critique
 
-    init(percentage: Double) {
-        if percentage > 0.5 {
-            self = .comfortable
-        } else if percentage > 0.2 {
-            self = .warning
+    init(pourcentage: Double) {
+        if pourcentage > 0.5 {
+            self = .confortable
+        } else if pourcentage > 0.2 {
+            self = .alerte
         } else {
-            self = .critical
+            self = .critique
         }
     }
 
-    var color: Color {
+    var couleur: Color {
         switch self {
-        case .comfortable:
+        case .confortable:
             .green
-        case .warning:
+        case .alerte:
             .orange
-        case .critical:
+        case .critique:
             .red
         }
     }
@@ -437,15 +447,15 @@ private struct HalfCircle: Shape {
 }
 
 private struct AppBackground: View {
-    var balanceLevel: BalanceLevel = .comfortable
+    var niveauSolde: NiveauSolde = .confortable
 
     private var colors: [Color] {
-        switch balanceLevel {
-        case .comfortable:
+        switch niveauSolde {
+        case .confortable:
             [.indigo.opacity(0.4), .green.opacity(0.3), .cyan.opacity(0.25)]
-        case .warning:
+        case .alerte:
             [.indigo.opacity(0.4), .orange.opacity(0.35), .yellow.opacity(0.2)]
-        case .critical:
+        case .critique:
             [.purple.opacity(0.4), .red.opacity(0.35), .orange.opacity(0.2)]
         }
     }
@@ -457,7 +467,7 @@ private struct AppBackground: View {
             endPoint: .bottomTrailing
         )
         .ignoresSafeArea()
-        .animation(.easeInOut(duration: 0.9), value: balanceLevel)
+        .animation(.easeInOut(duration: 0.9), value: niveauSolde)
     }
 }
 
@@ -481,20 +491,20 @@ private struct AddEntryButton: View {
     }
 }
 
-private struct SubscriptionRow: View {
-    let subscription: Subscription
+private struct LigneAbonnement: View {
+    let abonnement: Abonnement
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(subscription.emoji)
+            Text(abonnement.emoji)
                 .font(.title)
 
-            Text(subscription.name)
+            Text(abonnement.nom)
                 .font(.headline)
 
             Spacer()
 
-            Text(subscription.price.isEmpty ? "—" : "\(subscription.price) €")
+            Text(abonnement.prix.isEmpty ? "—" : "\(abonnement.prix) €")
                 .foregroundStyle(.secondary)
         }
         .contentShape(.rect)
@@ -502,20 +512,20 @@ private struct SubscriptionRow: View {
     }
 }
 
-private struct OneTimeExpenseRow: View {
-    let expense: OneTimeExpense
+private struct LigneDepensePonctuelle: View {
+    let depense: DepensePonctuelle
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(expense.emoji)
+            Text(depense.emoji)
                 .font(.title)
 
-            Text(expense.name)
+            Text(depense.nom)
                 .font(.headline)
 
             Spacer()
 
-            Text(expense.amount.isEmpty ? "—" : "\(expense.amount) €")
+            Text(depense.montant.isEmpty ? "—" : "\(depense.montant) €")
                 .foregroundStyle(.secondary)
         }
         .contentShape(.rect)
@@ -523,44 +533,66 @@ private struct OneTimeExpenseRow: View {
     }
 }
 
-private struct SubscriptionEditor: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var subscription: Subscription
+private struct EditeurAbonnement: View {
+    @Environment(\.dismiss) private var fermer
+    @State private var abonnement: Abonnement
 
-    let isNew: Bool
-    let onSave: (Subscription) -> Void
+    let estNouveau: Bool
+    let niveauSolde: NiveauSolde
+    let lorsEnregistrement: (Abonnement) -> Void
+    let lorsSuppression: () -> Void
 
-    init(subscription: Subscription, isNew: Bool, onSave: @escaping (Subscription) -> Void) {
-        _subscription = State(initialValue: subscription)
-        self.isNew = isNew
-        self.onSave = onSave
+    init(
+        abonnement: Abonnement,
+        estNouveau: Bool,
+        niveauSolde: NiveauSolde,
+        lorsEnregistrement: @escaping (Abonnement) -> Void,
+        lorsSuppression: @escaping () -> Void
+    ) {
+        _abonnement = State(initialValue: abonnement)
+        self.estNouveau = estNouveau
+        self.niveauSolde = niveauSolde
+        self.lorsEnregistrement = lorsEnregistrement
+        self.lorsSuppression = lorsSuppression
     }
 
     var body: some View {
         ZStack {
-            AppBackground()
+            AppBackground(niveauSolde: niveauSolde)
 
             VStack(spacing: 22) {
-                Text(isNew ? "Nouvel abonnement" : "Modifier l’abonnement")
+                Text(estNouveau ? "Nouvel abonnement" : "Modifier l’abonnement")
                     .font(.title.bold())
 
-                EditorEmojiField(text: $subscription.emoji)
+                EmojiField(text: $abonnement.emoji)
 
-                GlassTextField(title: "Nom", text: $subscription.name)
-                GlassTextField(title: "Prix mensuel", text: $subscription.price)
+                GlassTextField(title: "Nom", text: $abonnement.nom)
+                GlassTextField(title: "Prix mensuel", text: $abonnement.prix, suffix: "€")
 
                 HStack(spacing: 12) {
+                    if !estNouveau {
+                        Button {
+                            lorsSuppression()
+                            fermer()
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.title3)
+                        }
+                        .buttonStyle(.glass)
+                        .accessibilityLabel("Supprimer l’abonnement")
+                    }
+
                     Button("Annuler") {
-                        dismiss()
+                        fermer()
                     }
                     .buttonStyle(.glass)
 
                     Button("Enregistrer") {
-                        onSave(subscription)
-                        dismiss()
+                        lorsEnregistrement(abonnement)
+                        fermer()
                     }
                     .buttonStyle(.glass)
-                    .disabled(subscription.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(abonnement.nom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .padding(32)
@@ -572,44 +604,66 @@ private struct SubscriptionEditor: View {
     }
 }
 
-private struct OneTimeExpenseEditor: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var expense: OneTimeExpense
+private struct EditeurDepensePonctuelle: View {
+    @Environment(\.dismiss) private var fermer
+    @State private var depense: DepensePonctuelle
 
-    let isNew: Bool
-    let onSave: (OneTimeExpense) -> Void
+    let estNouveau: Bool
+    let niveauSolde: NiveauSolde
+    let lorsEnregistrement: (DepensePonctuelle) -> Void
+    let lorsSuppression: () -> Void
 
-    init(expense: OneTimeExpense, isNew: Bool, onSave: @escaping (OneTimeExpense) -> Void) {
-        _expense = State(initialValue: expense)
-        self.isNew = isNew
-        self.onSave = onSave
+    init(
+        depense: DepensePonctuelle,
+        estNouveau: Bool,
+        niveauSolde: NiveauSolde,
+        lorsEnregistrement: @escaping (DepensePonctuelle) -> Void,
+        lorsSuppression: @escaping () -> Void
+    ) {
+        _depense = State(initialValue: depense)
+        self.estNouveau = estNouveau
+        self.niveauSolde = niveauSolde
+        self.lorsEnregistrement = lorsEnregistrement
+        self.lorsSuppression = lorsSuppression
     }
 
     var body: some View {
         ZStack {
-            AppBackground()
+            AppBackground(niveauSolde: niveauSolde)
 
             VStack(spacing: 22) {
-                Text(isNew ? "Nouvelle dépense" : "Modifier la dépense")
+                Text(estNouveau ? "Nouvelle dépense" : "Modifier la dépense")
                     .font(.title.bold())
 
-                EditorEmojiField(text: $expense.emoji)
+                EmojiField(text: $depense.emoji)
 
-                GlassTextField(title: "Nom", text: $expense.name)
-                GlassTextField(title: "Montant", text: $expense.amount)
+                GlassTextField(title: "Nom", text: $depense.nom)
+                GlassTextField(title: "Montant", text: $depense.montant)
 
                 HStack(spacing: 12) {
+                    if !estNouveau {
+                        Button {
+                            lorsSuppression()
+                            fermer()
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.title3)
+                        }
+                        .buttonStyle(.glass)
+                        .accessibilityLabel("Supprimer la dépense")
+                    }
+
                     Button("Annuler") {
-                        dismiss()
+                        fermer()
                     }
                     .buttonStyle(.glass)
 
                     Button("Enregistrer") {
-                        onSave(expense)
-                        dismiss()
+                        lorsEnregistrement(depense)
+                        fermer()
                     }
                     .buttonStyle(.glass)
-                    .disabled(expense.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(depense.nom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .padding(32)
@@ -621,7 +675,7 @@ private struct OneTimeExpenseEditor: View {
     }
 }
 
-private struct EditorEmojiField: View {
+private struct EmojiField: View {
     @Binding var text: String
     @State private var emojiInput = ""
     @FocusState private var isEmojiInputFocused: Bool
@@ -662,15 +716,29 @@ private struct EditorEmojiField: View {
 private struct GlassTextField: View {
     let title: LocalizedStringKey
     @Binding var text: String
+    let suffix: String?
+
+    init(title: LocalizedStringKey, text: Binding<String>, suffix: String? = nil) {
+        self.title = title
+        _text = text
+        self.suffix = suffix
+    }
 
     var body: some View {
-        TextField(title, text: $text)
-            .textFieldStyle(.plain)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: 420)
-            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14))
+        HStack(spacing: 8) {
+            TextField(title, text: $text)
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.center)
+
+            if let suffix {
+                Text(suffix)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: 420)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14))
     }
 }
 
